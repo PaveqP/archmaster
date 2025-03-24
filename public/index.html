@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Angular Architecture Analyzer</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+    /* Верхняя панель для ввода */
+    #topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 10px;
+      background: #eee;
+      gap: 10px;
+    }
+    #topbar input, #topbar button {
+      font-size: 16px;
+      padding: 5px;
+    }
+    /* Контейнер для графа и боковой панели */
+    #main {
+      position: relative;
+      height: calc(100vh - 60px);
+    }
+    #cy {
+      height: 100%;
+      width: 100%;
+    }
+    /* Боковая панель позиционируется абсолютно и перекрывает граф */
+    #sidebar {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 300px;
+      height: 100%;
+      background: #f7f7f7;
+      overflow-y: auto;
+      z-index: 100;
+      box-shadow: -2px 0 5px rgba(0,0,0,0.3);
+      display: none;
+      padding: 10px;
+    }
+    /* Стили для подсветки */
+    .selected {
+      border-color: yellow !important;
+      border-width: 4px !important;
+    }
+    .neighbor {
+      background-color: #FF4136 !important;
+    }
+    .edge-neighbor {
+      line-color: #FF851B !important;
+      width: 4px !important;
+    }
+  </style>
+  <!-- Подключение Cytoscape.js -->
+  <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
+  <!-- Подключение dagre и расширения cytoscape-dagre -->
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre@2.3.0/cytoscape-dagre.js"></script>
+</head>
+<body>
+  <!-- Верхняя панель управления -->
+  <div id="topbar">
+    <label for="projectPath">Путь к проекту:</label>
+    <input type="text" id="projectPath" placeholder="/home/user/my-angular-app">
+    <button id="analyzeBtn">Анализировать</button>
+    <label for="searchInput">Поиск узла:</label>
+    <input type="text" id="searchInput" placeholder="Введите название узла">
+    <button id="searchBtn">Найти</button>
+  </div>
+  
+  <div id="main">
+    <div id="cy"></div>
+    <!-- Боковая панель, изначально скрыта -->
+    <div id="sidebar">
+      <h2>Информация об узле</h2>
+      <div id="nodeInfo">Кликните на узел, чтобы увидеть детали.</div>
+    </div>
+  </div>
+  
+  <script>
+    let cy; // Глобальная переменная для Cytoscape
+
+    // Функция отрисовки графа с использованием dagre layout
+    function renderGraph(data) {
+      const elements = [];
+      
+      // Формируем элементы узлов
+      data.nodes.forEach(node => {
+        elements.push({
+          data: { 
+            id: node.id, 
+            label: node.label, 
+            type: node.type,
+            complexity: node.metrics.complexity,
+            fan_in: node.metrics.fan_in,
+            fan_out: node.metrics.fan_out,
+            instability: node.metrics.instability.toFixed(2)
+          }
+        });
+      });
+      // Формируем элементы рёбер
+      data.edges.forEach(edge => {
+        elements.push({
+          data: { 
+            id: `${edge.from}_${edge.to}`, 
+            source: edge.from, 
+            target: edge.to 
+          }
+        });
+      });
+
+      if (cy) {
+        cy.destroy();
+      }
+      
+      // Инициализируем Cytoscape с использованием dagre для иерархической раскладки
+      cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: elements,
+        style: [
+          {
+            selector: 'node',
+            style: {
+              'shape': 'rectangle',
+              'label': 'data(label)',
+              'text-valign': 'center',
+              'color': '#fff',
+              'background-color': '#0074D9',
+              'width': 'label',
+              'height': 'label',
+              'padding': '10px',
+              'font-size': '12px',
+              'border-width': 2,
+              'border-color': '#0074D9'
+            }
+          },
+          {
+            selector: 'edge',
+            style: {
+              'width': 2,
+              'line-color': '#ccc',
+              'target-arrow-color': '#ccc',
+              'target-arrow-shape': 'triangle'
+            }
+          },
+          /* Стили для подсветки */
+          {
+            selector: '.selected',
+            style: {
+              'border-color': 'yellow',
+              'border-width': 4
+            }
+          },
+          {
+            selector: '.neighbor',
+            style: {
+              'background-color': '#FF4136'
+            }
+          },
+          {
+            selector: '.edge-neighbor',
+            style: {
+              'line-color': '#FF851B',
+              'width': 4
+            }
+          }
+        ],
+        layout: {
+          name: 'dagre',
+          rankDir: 'TB',       // сверху вниз
+          ranker: 'longest-path',
+          nodeSep: 50,
+          rankSep: 150,
+          padding: 20,
+          animate: true
+        }
+      });
+      
+      // Обработка клика на узел
+      cy.on('tap', 'node', function(evt){
+        // Сброс предыдущей подсветки
+        cy.elements().removeClass('selected neighbor edge-neighbor');
+
+        const node = evt.target;
+        node.addClass('selected');
+
+        // Подсветка соседей и рёбер, связывающих их
+        let neighbors = node.neighborhood();
+        neighbors.nodes().difference(node).forEach(n => {
+          n.addClass('neighbor');
+        });
+        neighbors.edges().forEach(edge => {
+          edge.addClass('edge-neighbor');
+        });
+        
+        // Формирование информации для боковой панели
+        let nodeData = node.data();
+        let neighborLabels = neighbors.nodes().difference(node).map(n => n.data('label'));
+        let neighborList = neighborLabels.length > 0 ? neighborLabels.join(', ') : 'Отсутствуют';
+        document.getElementById('nodeInfo').innerHTML = `
+          <strong>ID:</strong> ${nodeData.id}<br>
+          <strong>Название:</strong> ${nodeData.label}<br>
+          <strong>Тип:</strong> ${nodeData.type}<br>
+          <strong>Метрика сложности:</strong> ${nodeData.complexity}<br>
+          <strong>fan_in:</strong> ${nodeData.fan_in}<br>
+          <strong>fan_out:</strong> ${nodeData.fan_out}<br>
+          <strong>I (неустойчивость):</strong> ${nodeData.instability}<br>
+          <strong>Соседи:</strong> ${neighborList}
+        `;
+        // Отображаем боковую панель
+        document.getElementById('sidebar').style.display = 'block';
+
+        // Центрируем камеру на выбранном узле
+        cy.animate({
+          center: { eles: node },
+          duration: 500
+        });
+      });
+      
+      // При клике вне узлов (на фоне графа) сбрасываем подсветку и скрываем боковую панель
+      cy.on('tap', function(evt){
+        if (evt.target === cy) {
+          cy.elements().removeClass('selected neighbor edge-neighbor');
+          document.getElementById('sidebar').style.display = 'none';
+        }
+      });
+    }
+    
+    // Функция поиска узла по названию и подсветки найденного узла
+    function searchNode(query) {
+      if (!cy) return;
+      const matchingNodes = cy.nodes().filter(node => 
+        node.data('label').toLowerCase().includes(query.toLowerCase())
+      );
+      if (matchingNodes.length === 0) {
+        alert('Узел не найден');
+        return;
+      }
+      const node = matchingNodes[0];
+      cy.elements().removeClass('selected neighbor edge-neighbor');
+      node.addClass('selected');
+      let neighbors = node.neighborhood();
+      neighbors.nodes().difference(node).forEach(n => {
+        n.addClass('neighbor');
+      });
+      neighbors.edges().forEach(edge => {
+        edge.addClass('edge-neighbor');
+      });
+      cy.animate({
+        center: { eles: node },
+        duration: 500
+      });
+      // Отображаем боковую панель с информацией
+      let nodeData = node.data();
+      let neighborLabels = neighbors.nodes().difference(node).map(n => n.data('label'));
+      let neighborList = neighborLabels.length > 0 ? neighborLabels.join(', ') : 'Отсутствуют';
+      document.getElementById('nodeInfo').innerHTML = `
+          <strong>ID:</strong> ${nodeData.id}<br>
+          <strong>Название:</strong> ${nodeData.label}<br>
+          <strong>Тип:</strong> ${nodeData.type}<br>
+          <strong>Метрика сложности:</strong> ${nodeData.complexity}<br>
+          <strong>fan_in:</strong> ${nodeData.fan_in}<br>
+          <strong>fan_out:</strong> ${nodeData.fan_out}<br>
+          <strong>I (неустойчивость):</strong> ${nodeData.instability}<br>
+          <strong>Соседи:</strong> ${neighborList}
+      `;
+      document.getElementById('sidebar').style.display = 'block';
+    }
+    
+    // Обработка клика по кнопке "Анализировать"
+    document.getElementById('analyzeBtn').addEventListener('click', function() {
+      const projectPath = document.getElementById('projectPath').value;
+      if (!projectPath) {
+        alert('Введите путь к проекту');
+        return;
+      }
+      
+      fetch(`/analyze?projectPath=${encodeURIComponent(projectPath)}`)
+        .then(response => response.json())
+        .then(data => {
+          renderGraph(data);
+        })
+        .catch(error => {
+          console.error('Ошибка:', error);
+          alert('Произошла ошибка при анализе проекта');
+        });
+    });
+    
+    // Обработка клика по кнопке "Найти"
+    document.getElementById('searchBtn').addEventListener('click', function() {
+      const query = document.getElementById('searchInput').value;
+      if (!query) {
+        alert('Введите название узла для поиска');
+        return;
+      }
+      searchNode(query);
+    });
+  </script>
+</body>
+</html>
+
