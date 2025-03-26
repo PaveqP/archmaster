@@ -1,0 +1,55 @@
+html,
+body {
+    margin: 0;
+    height: 100%;
+    font-family: Arial, sans-serif;
+}
+/* Верхняя панель для ввода */
+#topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px;
+    background: #eee;
+    gap: 10px;
+}
+#topbar input,
+#topbar button {
+    font-size: 16px;
+    padding: 5px;
+}
+/* Контейнер для графа и боковой панели */
+#main {
+    position: relative;
+    height: calc(100vh - 60px);
+}
+#cy {
+    height: 100%;
+    width: 100%;
+}
+/* Боковая панель позиционируется абсолютно и перекрывает граф */
+#sidebar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 300px;
+    height: 100%;
+    background: #f7f7f7;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: -2px 0 5px rgba(0, 0, 0, 0.3);
+    display: none;
+    padding: 10px;
+}
+/* Стили для подсветки */
+.selected {
+    border-color: yellow !important;
+    border-width: 4px !important;
+}
+.neighbor {
+    background-color: #ff4136 !important;
+}
+.edge-neighbor {
+    line-color: #ff851b !important;
+    width: 4px !important;
+}
